@@ -53,6 +53,9 @@ object Boot extends App {
             complete(BadRequest, JsObject("error" -> JsString(error.getMessage)))
         }
       }
+    } ~
+    (get & path("app")) {
+      getFromFile("src/main/js/public/index.html")
     }
 
   val port = config.getInt("boot.port")
