@@ -5,6 +5,7 @@ import akka.stream.actor.{ ActorPublisher, ActorPublisherMessage }
 import akka.stream.{ Materializer, ActorMaterializer }
 import akka.stream.scaladsl.Source
 import akka.http.scaladsl.Http
+import akka.event.Logging
 import com.typesafe.config.ConfigFactory
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.model.StatusCodes.{ InternalServerError, OK, BadRequest }
@@ -15,12 +16,34 @@ import sangria.parser.QueryParser
 import scala.util.{ Success, Failure }
 import sangria.execution.{ ErrorWithResolver, QueryAnalysisError, Executor, HandledException, PreparedQuery }
 import sangria.marshalling.sprayJson._
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import de.heikoseeberger.akkasse._
+import de.heikoseeberger.akkasse.EventStreamMarshalling._
+import scala.util.control.NonFatal
+import scala.concurrent.duration._
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 
 object Boot extends App {
   private val config = ConfigFactory.load()
   implicit val system = ActorSystem("Example", config)
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
+  val logger = Logging(system, getClass)
+
+  val messageRepo = new ChatData.MessageRepo
+
+  def eventStream(preparedQuery: PreparedQuery[ChatData.MessageRepo, Any, JsObject]): Source[ServerSentEvent, Any] = {
+    Source.tick(2.seconds, 2.seconds, "auto message")
+      .mapAsync(1) { s: String => messageRepo.addMessage("1", s) }
+      .map { m => sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt)) }
+      .map { e => preparedQuery.execute(root = e).map { r => ServerSentEvent(r.compactPrint) } }
+      .mapAsync(1)(identity)
+      .recover {
+        case NonFatal(error) =>
+          logger.error(error, "Unexpected error during event stream processing.")
+            ServerSentEvent(error.getMessage)
+      }
+  }
 
   val route =
     (post & path("graphql")) {
@@ -41,7 +64,7 @@ object Boot extends App {
               Executor.execute(
                 ChatSchema.schema,
                 queryAst,
-                new ChatData.MessageRepo,
+                messageRepo,
                 variables = vars,
                 operationName = operation)
               .map(OK -> _)
@@ -54,8 +77,37 @@ object Boot extends App {
         }
       }
     } ~
+    (get & path("graphql")) {
+      parameters('query, 'operation.?) { (query, operation) =>
+        logger.info(s"query: $query, operation: $operation")
+        QueryParser.parse(query) match {
+          case Success(queryAst) =>
+            complete(
+              Executor.prepare(
+                ChatSchema.schema,
+                queryAst,
+                messageRepo,
+                operationName = operation,
+                variables = JsObject.empty)
+              .map { pq => ToResponseMarshallable(eventStream(pq)) }
+              .recover {
+                case error: QueryAnalysisError =>
+                  ToResponseMarshallable(BadRequest → error.resolveError)
+                case error: ErrorWithResolver =>
+                  ToResponseMarshallable(InternalServerError → error.resolveError)
+                case error =>
+                  ToResponseMarshallable(BadRequest -> error.getMessage)
+              })
+          case Failure(error) =>
+            complete(BadRequest, JsObject("error" -> JsString(error.getMessage)))
+        }
+      }
+    } ~
     (get & path("app")) {
       getFromFile("src/main/js/public/index.html")
+    } ~
+    (get & path("subTest")) {
+      getFromFile("src/main/js/public/subTest.html")
     }
 
   val port = config.getInt("boot.port")

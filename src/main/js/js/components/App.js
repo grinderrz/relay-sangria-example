@@ -20,7 +20,7 @@ export default Relay.createContainer(App, {
   fragments: {
     chat: () => Relay.QL`
       fragment on Chat {
-        messages(first: 5) {
+        messages(last: 5) {
           edges {
             node {
               id,

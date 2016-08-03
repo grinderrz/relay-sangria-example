@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+
+var query = encodeURIComponent("subscription tst { messageAdded { messageEdge { cursor node { id rawId content}} }}");
+    source = new EventSource('/graphql?query='+query);
+    source.addEventListener('message', function(e) {
+      console.log(JSON.stringify(JSON.parse(e.data), null, 2))
+    })
+    source.addEventListener('open', function(e) {
+      console.info("Subscribed");
+    })
+  </script>
+</head>
+<body> </body>

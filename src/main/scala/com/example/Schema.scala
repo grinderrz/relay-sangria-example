@@ -2,12 +2,12 @@ package com.example
 
 import sangria.relay._
 import sangria.schema._
-import ChatData.{ Chat, Message, MessageRepo }
+import ChatData.{ Chat, Message, Event, MessageAdded, MessageRepo }
 
 object ChatSchema {
 
   val NodeDefinition(nodeInterface, nodeField) = Node.definition(
-    (id: GlobalId, ctx: Context[MessageRepo, Unit]) => {
+    (id: GlobalId, ctx: Context[MessageRepo, Any]) => {
       if (id.typeName == "Chat") ctx.ctx.getChat(id.id)
       else if (id.typeName == "Message") ctx.ctx.getMessage(id.id)
       else None
@@ -26,9 +26,9 @@ object ChatSchema {
     fields[Unit, Message](
       Field("content", StringType, Some("Message content"), resolve = _.value.content)))
 
-  val ConnectionDefinition(_, messageConnection) =
-    Connection.definition[MessageRepo, Connection, Option[Message]](
-      "Message", OptionType(MessageType))
+  val ConnectionDefinition(messageEdge, messageConnection) =
+    Connection.definition[MessageRepo, Connection, Message](
+      "Message", MessageType)
 
   val ChatType: ObjectType[MessageRepo, Chat] = ObjectType(
     "Chat",
@@ -37,14 +37,30 @@ object ChatSchema {
     fields[MessageRepo, Chat](
       Node.globalIdField[MessageRepo, Chat],
       Field("name", OptionType(StringType), Some("The name of the Chat"), resolve = _.value.name),
-      Field("messages", OptionType(messageConnection), arguments = Connection.Args.All,
+      Field("messages", messageConnection, arguments = Connection.Args.All,
         resolve = (ctx) => {
-          Connection.connectionFromSeq(ctx.ctx.getChatMessages(ctx.value.id), ConnectionArgs(ctx))
+          ctx.ctx.getChatMessages(
+            ctx.value.id,
+            ctx.arg(Connection.Args.Before).flatMap(Connection.cursorToOffset),
+            ctx.arg(Connection.Args.After).flatMap(Connection.cursorToOffset),
+            ctx.arg(Connection.Args.First),
+            ctx.arg(Connection.Args.Last))
         })))
 
-  val QueryType = ObjectType("Query", fields[MessageRepo, Unit](
+  val QueryType = ObjectType("Query", fields[MessageRepo, Any](
     Field("chat", OptionType(ChatType), resolve = _.ctx.getChat("1")),
     nodeField))
 
-  val schema = Schema(QueryType)
+  val MessageAddedType = ObjectType(
+    "MessageAdded",
+    "MessageAdded event",
+    fields[MessageRepo, Edge[Message]](
+      Field("messageEdge", messageEdge, resolve = (ctx) => { ctx.value })))
+
+  val SubscriptionType = ObjectType(
+    "Subscription",
+    fields[MessageRepo, Any](
+      Field("messageAdded", MessageAddedType, resolve = _.value.asInstanceOf[Edge[Message]])))
+
+  val schema = Schema(QueryType, None, Some(SubscriptionType))
 }
