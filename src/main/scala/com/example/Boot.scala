@@ -22,6 +22,7 @@ import de.heikoseeberger.akkasse.EventStreamMarshalling._
 import scala.util.control.NonFatal
 import scala.concurrent.duration._
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import DefaultJsonProtocol._ 
 
 object Boot extends App {
   private val config = ConfigFactory.load()
@@ -78,8 +79,16 @@ object Boot extends App {
       }
     } ~
     (get & path("graphql")) {
-      parameters('query, 'operation.?) { (query, operation) =>
-        logger.info(s"query: $query, operation: $operation")
+      parameters('query, 'operation.?, 'variables.?) { (query, operation, variables) =>
+        logger.info(s"subscription with query: $query, operation: $operation, variables: $variables")
+        val vars = variables match {
+          case Some(varStr) => varStr.parseJson match {
+            case obj: JsObject => obj
+            case _ => JsObject.empty
+          }
+          //case Some(JsString(s)) if s.trim.nonEmpty => s.parseJson
+          case _ => JsObject.empty
+        }
         QueryParser.parse(query) match {
           case Success(queryAst) =>
             complete(
@@ -88,7 +97,7 @@ object Boot extends App {
                 queryAst,
                 messageRepo,
                 operationName = operation,
-                variables = JsObject.empty)
+                variables = vars)
               .map { pq => ToResponseMarshallable(eventStream(pq)) }
               .recover {
                 case error: QueryAnalysisError =>

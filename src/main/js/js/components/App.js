@@ -1,7 +1,18 @@
 import React from 'react';
 import Relay from 'react-relay';
+import * as RelaySubscriptions from 'relay-subscriptions';
+import MessageAddedSubscription from '../subscriptions/MessageAddedSubscription';
 
 class App extends React.Component {
+  componentDidMount() {
+    const subscribe = this.props.subscriptions.subscribe;
+    this._addSubscription = subscribe(
+      new MessageAddedSubscription({ chat: this.props.chat })
+    );
+  }
+  componentWillUnmount() {
+    if (this._addSubscription) this._addSubscription.dispose();
+  }
   render() {
     return (
       <div>
@@ -16,7 +27,7 @@ class App extends React.Component {
   }
 }
 
-export default Relay.createContainer(App, {
+export default Relay.createContainer(RelaySubscriptions.createSubscriptionContainer(App), {
   fragments: {
     chat: () => Relay.QL`
       fragment on Chat {

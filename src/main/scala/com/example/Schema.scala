@@ -4,6 +4,7 @@ import sangria.relay._
 import sangria.schema._
 import ChatData.{ Chat, Message, Event, MessageAdded, MessageRepo }
 
+
 object ChatSchema {
 
   val NodeDefinition(nodeInterface, nodeField) = Node.definition(
@@ -55,12 +56,18 @@ object ChatSchema {
     "MessageAdded",
     "MessageAdded event",
     fields[MessageRepo, Edge[Message]](
+      Field("clientMutationId", StringType, resolve = (ctx) => "lskfjd"),
       Field("messageEdge", messageEdge, resolve = (ctx) => { ctx.value })))
 
+  val subInputType = InputObjectType[InputObjectType.DefaultInput]("SubInput",
+    fields = InputField("clientMutationId", StringType) :: Nil)
+  val inputArg = Argument("input", subInputType)
   val SubscriptionType = ObjectType(
     "Subscription",
     fields[MessageRepo, Any](
-      Field("messageAdded", MessageAddedType, resolve = _.value.asInstanceOf[Edge[Message]])))
+      Field("messageAdded", MessageAddedType,
+        arguments = inputArg :: Nil,
+        resolve = _.value.asInstanceOf[Edge[Message]])))
 
   val schema = Schema(QueryType, None, Some(SubscriptionType))
 }

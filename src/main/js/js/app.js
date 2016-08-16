@@ -7,12 +7,16 @@ import ReactDOM from 'react-dom';
 import Relay from 'react-relay';
 import RelayNetworkDebug from 'react-relay/lib/RelayNetworkDebug';
 
+import Root from './components/Root';
+
 RelayNetworkDebug.init();
 
 ReactDOM.render(
-  <Relay.RootContainer
-    Component={App}
-    route={new AppHomeRoute()}
-  />,
+  <Root environment={Relay.Store}>
+    <Relay.RootContainer
+      Component={App}
+      route={new AppHomeRoute()}
+      />
+  </Root>,
   document.getElementById('root')
 );
