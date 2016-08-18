@@ -31,11 +31,10 @@ object Boot extends App {
   implicit val ec = system.dispatcher
   val logger = Logging(system, getClass)
 
-  val messageRepo = new ChatData.MessageRepo
+  val messageRepo = new ChatData.MessageRepo(system)
 
-  def eventStream(preparedQuery: PreparedQuery[ChatData.MessageRepo, Any, JsObject]): Source[ServerSentEvent, Any] = {
-    Source.tick(2.seconds, 2.seconds, "auto message")
-      .mapAsync(1) { s: String => messageRepo.addMessage("1", s) }
+  def eventStream(preparedQuery: PreparedQuery[ChatData.MessageRepo, Any, JsObject], messageRepo: ChatData.MessageRepo): Source[ServerSentEvent, Any] = {
+    Source.fromPublisher(messageRepo.getPublisher)
       .map { m => sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt)) }
       .map { e => preparedQuery.execute(root = e).map { r => ServerSentEvent(r.compactPrint) } }
       .mapAsync(1)(identity)
@@ -98,7 +97,7 @@ object Boot extends App {
                 messageRepo,
                 operationName = operation,
                 variables = vars)
-              .map { pq => ToResponseMarshallable(eventStream(pq)) }
+              .map { pq => ToResponseMarshallable(eventStream(pq, messageRepo)) }
               .recover {
                 case error: QueryAnalysisError =>
                   ToResponseMarshallable(BadRequest → error.resolveError)

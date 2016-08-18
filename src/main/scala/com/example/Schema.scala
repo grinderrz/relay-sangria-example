@@ -69,5 +69,27 @@ object ChatSchema {
         arguments = inputArg :: Nil,
         resolve = _.value.asInstanceOf[Edge[Message]])))
 
-  val schema = Schema(QueryType, None, Some(SubscriptionType))
+  case class MutationPayload(clientMutationId: String, messageEdge: Edge[Message]) extends Mutation
+
+  val addMessageMutation = Mutation.fieldWithClientMutationId[MessageRepo, Any, MutationPayload, InputObjectType.DefaultInput](
+    fieldName = "addMessage",
+    typeName = "AddMessage",
+    inputFields = List(InputField("message", StringType)),
+    outputFields = fields(
+      Field("messageEdge", messageEdge, resolve = _.value.messageEdge.asInstanceOf[Edge[Message]])),
+    mutateAndGetPayload = (input, ctx) => {
+      import scala.concurrent.ExecutionContext.Implicits.global
+      val mutationId = input(Mutation.ClientMutationIdFieldName).asInstanceOf[String]
+      ctx.ctx.addMessage("1", input("message").asInstanceOf[String])
+        .map { m =>
+          MutationPayload(
+            mutationId,
+            sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt)))
+        }
+    })
+
+  val MutationType = ObjectType(
+    "Mutation", fields[MessageRepo, Any](addMessageMutation))
+
+  val schema = Schema(QueryType, Some(MutationType), Some(SubscriptionType))
 }

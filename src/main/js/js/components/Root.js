@@ -15,11 +15,11 @@ export default class Root extends Component {
     var source = new EventSource('/graphql?query='+subscriptionRequest.getQueryString()+'&variables='+JSON.stringify(subscriptionRequest.getVariables()));
     // receives subscription payloads
     source.addEventListener('message', function(e) {
-      console.log('%s received data: %s', subscriptionRequest.getDebugName(), e.data);
+      //console.log('%s received data: %s', subscriptionRequest.getDebugName(), e.data);
       subscriptionRequest.onNext(JSON.parse(e.data).data);
     })
     source.addEventListener('close', function(e) {
-      console.log('%s is completed', subscriptionRequest.getDebugName());
+      //console.log('%s is completed', subscriptionRequest.getDebugName());
       subscriptionRequest.onCompleted();
       this._subscriptions.splice(this._subscriptions.indexOf(subscriptionRequest), 1);
     })
