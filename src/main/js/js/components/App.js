@@ -7,21 +7,46 @@ import MessageTextInput from './MessageTextInput';
 
 class App extends React.Component {
   _handleTextInputSave = (text) => {
+    /*
+    this.props.relay.setVariables({
+      last: this.props.relay.variables.last + 1,
+    }, (a) => { console.log("orsc", a); });
+    */
     this.props.relay.commitUpdate(
-      new AddMessageMutation({message: text, chat: this.props.chat}))
+      new AddMessageMutation({message: text, chat: this.props.chat, chatId: "1"}),
+      {
+        onFailure: () => {
+          /*
+          this.props.relay.setVariables({
+            last: this.props.relay.variables.last - 1
+          });
+          */
+        }
+      })
   }
   componentDidMount() {
     const subscribe = this.props.subscriptions.subscribe;
     this._addSubscription = subscribe(
-      new MessageAddedSubscription({ chat: this.props.chat })
+      new MessageAddedSubscription({ chat: this.props.chat }),
+      (data) => {
+        this.props.relay.setVariables({
+          last: this.props.relay.variables.last + 1
+        });
+        //console.log("onsub", data);
+      }
     );
   }
   componentWillUnmount() {
     if (this._addSubscription) this._addSubscription.dispose();
   }
+  /*
+  componentWillReceiveProps(np) {
+    console.log("cwrp", np, this.props);
+  }
+  */
   _onclickHistory = () => {
     this.props.relay.setVariables({
-      last: this.props.relay.variables.last + 1
+      last: this.props.relay.variables.last + 5
     });
   }
   renderMessages() {
@@ -52,11 +77,7 @@ class App extends React.Component {
 
 export default Relay.createContainer(RelaySubscriptions.createSubscriptionContainer(App), {
   initialVariables: {
-    last: 5
-  },
-  prepareVariables: vars => {
-    console.log("vars: ", vars);
-    return vars;
+    last: 5,
   },
   fragments: {
     chat: () => Relay.QL`

@@ -30,14 +30,15 @@ export default class AddMessageMutation extends Relay.Mutation {
   }
   getVariables() {
     return {
-      message: this.props.message
+      message: this.props.message,
+      chatId: this.props.chatId
     }
   }
   getOptimisticResponse() {
     return {
       messageEdge: {
         node: {
-          content: this.props.content
+          content: this.props.message
         }
       }
     };

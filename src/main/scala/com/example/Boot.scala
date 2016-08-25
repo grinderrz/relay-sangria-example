@@ -34,9 +34,27 @@ object Boot extends App {
   val messageRepo = new ChatData.MessageRepo(system)
 
   def eventStream(preparedQuery: PreparedQuery[ChatData.MessageRepo, Any, JsObject], messageRepo: ChatData.MessageRepo): Source[ServerSentEvent, Any] = {
+    val fieldNames = preparedQuery.fields.map { pf => pf.field.name }
     Source.fromPublisher(messageRepo.getPublisher)
-      .map { m => sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt)) }
-      .map { e => preparedQuery.execute(root = e).map { r => ServerSentEvent(r.compactPrint) } }
+      .filter { e => e match {
+        case m: ChatData.MessageAdded => fieldNames.contains("messageAdded")
+        case e: ChatData.OtherEvent => fieldNames.contains("otherEvent")
+        case _ => false
+      } }
+      .map {
+        case ChatData.MessageAdded(m, chatId) =>
+          logger.info(s"MessageAdded: $m, $chatId")
+          sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt))
+        case oe: ChatData.OtherEvent =>
+          logger.info(s"other event: $oe")
+          oe
+      }
+      .map { e =>
+        preparedQuery.execute(root = e).map { r =>
+          logger.info(s"r: $r")
+          ServerSentEvent(r.compactPrint)
+        }
+      }
       .mapAsync(1)(identity)
       .recover {
         case NonFatal(error) =>

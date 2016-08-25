@@ -8,7 +8,7 @@ export default class Root extends Component {
     children: PropTypes.element,
   };
   _subscriptions = [];
-  subscribe = (subscriptionRequest, topic) => {
+  subscribe = (subscriptionRequest, onmessage) => {
     this._subscriptions.push(subscriptionRequest);
 
     // register the subscription on the server
@@ -17,6 +17,7 @@ export default class Root extends Component {
     source.addEventListener('message', function(e) {
       //console.log('%s received data: %s', subscriptionRequest.getDebugName(), e.data);
       subscriptionRequest.onNext(JSON.parse(e.data).data);
+      if (onmessage) onmessage(JSON.parse(e.data).data);
     })
     source.addEventListener('close', function(e) {
       //console.log('%s is completed', subscriptionRequest.getDebugName());

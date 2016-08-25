@@ -17,14 +17,15 @@ class Client[T] extends Actor with ActorPublisher[T] with ActorLogging {
 }
 
 object ChatData {
-  case class Chat(id: String, name: String) extends Node
+  case class Chat(id: String, name: String, messageIds: Seq[String]) extends Node
   case class Message(id: String, createdAt: Long, content: String) extends Node
   trait Event
-  case class MessageAdded(message: Message) extends Event
+  case class MessageAdded(message: Message, chatId: String) extends Event
+  case class OtherEvent(chatId: String) extends Event
   case class Register(client: ActorRef)
 
   object Chats {
-    val chats = Map[String, Chat]("1" -> Chat("1", "Simple chat"))
+    var chats = Map[String, Chat]("1" -> Chat("1", "Simple chat", List()))
   }
 
   object Messages {
@@ -34,28 +35,36 @@ object ChatData {
 
   class MessageRepo(system: ActorSystem) {
     import Messages._
+    import Chats._
     val distributor = system.actorOf(Props(new Actor with ActorLogging {
       var clients = Set[ActorRef]()
       def receive = {
         case Register(client) =>
           context.watch(client)
           clients = clients + client
-        case m: Message =>
+          /*
+        case m: MessageAdded =>
           log.info(s"spreading message to ${clients.size} clients")
           clients.foreach { _ ! m }
+          */
+        case e: Event =>
+          log.info(s"spreading Event to ${clients.size} clients")
+          clients.foreach { _ ! e }
         case Terminated(s) => clients = clients - s
       }
     }))
     def getMessage(id: String) = messages.get(id.toInt)
-    def getChat(id: String) = Chats.chats.get(id)
-    def addMessage(chatId: String, content: String) = {
-      lastId.alter(_ + 1)
+    def getChat(id: String) = chats.get(id)
+    def addMessage(chatId: String, content: String) = getChat(chatId) match {
+      case Some(chat) => lastId.alter(_ + 1)
         .map { iId =>
           val m = Message(iId.toString, System.currentTimeMillis, content)
-          distributor ! m
           messages = messages + (iId -> m)
+          chats = chats + (chatId -> chat.copy(messageIds = (chat.messageIds :+ iId.toString)))
+          distributor ! MessageAdded(m, chatId)
           m
         }
+      case None => throw new Exception(s"no chat with id: $chatId")
     }
     def getChatMessages(
       id: String,
@@ -83,9 +92,10 @@ object ChatData {
           res.map { case (i, m) => Edge(m, Connection.offsetToCursor(i)) }.toSeq)
     }
     def getPublisher = {
-      val client = system.actorOf(Props(new Client[Message]))
+      val client = system.actorOf(Props(new Client[Event]))
       distributor ! Register(client)
-      ActorPublisher[Message](client)
+      distributor ! OtherEvent("1")
+      ActorPublisher[Event](client)
     }
   }
 

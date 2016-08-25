@@ -65,23 +65,34 @@ object ChatSchema {
   val SubscriptionType = ObjectType(
     "Subscription",
     fields[MessageRepo, Any](
-      Field("messageAdded", MessageAddedType,
+      Field("messageAdded", OptionType(MessageAddedType),
         arguments = inputArg :: Nil,
-        resolve = _.value.asInstanceOf[Edge[Message]])))
+        resolve = { _.value match {
+          case e: Edge[Message] => Some(e.asInstanceOf[Edge[Message]])
+          case _ => None
+        } }),
+      Field("otherEvent", OptionType(StringType),
+        resolve = { _.value match {
+          case e: ChatData.OtherEvent => Some(e.chatId)
+          case _ => None
+        } })))
 
   case class MutationPayload(clientMutationId: String, messageEdge: Edge[Message]) extends Mutation
 
   val addMessageMutation = Mutation.fieldWithClientMutationId[MessageRepo, Any, MutationPayload, InputObjectType.DefaultInput](
     fieldName = "addMessage",
     typeName = "AddMessage",
-    inputFields = List(InputField("message", StringType)),
+    inputFields = List(
+      InputField("chatId", StringType),
+      InputField("message", StringType)),
     outputFields = fields(
       Field("messageEdge", messageEdge, resolve = _.value.messageEdge.asInstanceOf[Edge[Message]])),
     mutateAndGetPayload = (input, ctx) => {
       import scala.concurrent.ExecutionContext.Implicits.global
       val mutationId = input(Mutation.ClientMutationIdFieldName).asInstanceOf[String]
-      ctx.ctx.addMessage("1", input("message").asInstanceOf[String])
-        .map { m =>
+      ctx.ctx.addMessage(
+        input("chatId").asInstanceOf[String],
+        input("message").asInstanceOf[String]).map { m =>
           MutationPayload(
             mutationId,
             sangria.relay.Edge(m, sangria.relay.Connection.offsetToCursor(m.id.toInt)))
